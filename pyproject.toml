@@ -1,0 +1,52 @@
+# inspired by https://github.com/denkiwakame/py-tiny-pkg/blob/main/pyproject.toml /Thanks!/
+
+[build-system]
+
+requires = [
+    "setuptools >= 58.0",
+    "wheel"
+]
+
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# include = []
+# exclude = ["tests"]
+namespaces = true
+
+[tool.setuptools_scm]
+write_to = "src/pvreg/_version.py"
+
+[project]
+name = "pvreg"
+version = "1.2.0"
+#dynamic = ["version"]
+description = "package to run 3-level latent regression model for educational value added"
+authors = [{ name = "Bartosz Kondratek" }, { email = "everythingthatcounts@gmail.com" }]
+maintainers = [{ name = "Bartosz Kondratek" }, { email = "everythingthatcounts@gmail.com" }]
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+requires-python = ">=3.8"
+dependencies = [
+    "numpy == 1.21.5",
+    "pandas == 1.4.3",
+    "statsmodels == 0.13.2",
+    "enlighten ==1.11.1"
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+]
+keywords = ["educational value added",
+    "latent regression",
+    "multilevel regression",
+    "mcmc",
+    "irt"]
+[project.urls]
+Homepage = "https://github.com/bkondratek/pvreg"
+
