@@ -5,8 +5,8 @@ with [uirt](https://github.com/bkondratek/uirt) you can use it to
 export (i) IRT model parameter estimates and (ii) item data to CSV
 files that are understood by ```pvreg```.  
 2) ```load_uirt``` - allows you to load IRT model estimates 
-saved by ```export_uirt``` back into Stata creating mockup.
-[uirt](https://github.com/bkondratek/uirt) estimates 
+saved by ```export_uirt``` back into Stata creating a mockup of 
+[uirt](https://github.com/bkondratek/uirt) estimates in Stata.
 3) ```export_exog``` - used to export the dataset with exogenous 
 variables to CSV files that are understood by ```pvreg```.
 
