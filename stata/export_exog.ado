@@ -1,6 +1,6 @@
 *export_exog
-*ver 1.1
-*2022.12.02
+*ver 1.1.1
+*2023.03.01
 *everythingthatcounts@gmail.com
 
 cap mata: mata drop export_exog()
@@ -9,7 +9,7 @@ cap prog drop export_exog
 
 program define export_exog
 version 10
-syntax [varlist], STudentid(str) SCHoolid(str) [Outpath(str)]
+syntax [varlist], STudentid(str) SCHoolid(str) [Outpath(str) Inpath(str)]
 
 	
 	
@@ -44,7 +44,7 @@ syntax [varlist], STudentid(str) SCHoolid(str) [Outpath(str)]
 	
 	keep `exog' `studentid' `schoolid'
 	
-	m: export_exog("`exog'" , "`studentid'" , "`schoolid'" , "`outpath'")
+	m: export_exog("`exog'" , "`studentid'" , "`schoolid'" , "`outpath'", "`inpath'")
 	
 	qui restore
 
@@ -63,7 +63,7 @@ mata:
 		return(notoklist)
 	}
 
-	void export_exog(string scalar exog_vars , string scalar student_id, string scalar school_id, string scalar out_path){
+	void export_exog(string scalar exog_vars , string scalar student_id, string scalar school_id, string scalar out_path, string scalar in_path){
 	
 		if(fileexists(pwd()+"pvreg_config.json")){
 			display("pvreg_config.json found, working in append mode")
@@ -79,7 +79,7 @@ mata:
 		stata("qui compress")
 		stata("export delimited using "+char(34)+"student_exog.csv"+char(34)+", replace nolabel")
 		
-		fput(X,char(9)+char(34)+"path"+char(34)+": " +char(34)+wd+char(34)+",")
+
 		fput(X,char(9)+char(34)+"student_exog"+char(34)+": " +char(34)+"student_exog.csv"+char(34)+",")
 		
 		fput(X,char(9)+char(34)+"student_id"+char(34)+": " +char(34)+student_id+char(34)+",")
@@ -90,7 +90,19 @@ mata:
 		fput(X,char(9)+char(34)+"npv"+char(34)+": 15,")
 		fput(X,char(9)+char(34)+"njobs"+char(34)+": 1,")
 		
-		
+
+		//fput(X,char(9)+char(34)+"path"+char(34)+": " +char(34)+wd+char(34)+",")
+		if(strlen(in_path)){
+			in_path = subinstr(in_path,"\","/")
+			if(substr(in_path,-1)!="/"){
+				in_path=in_path+"/"
+			}
+			fput(X,char(9)+char(34)+"path"+char(34)+": " +char(34)+in_path+char(34)+",")
+		}
+		else{
+			fput(X,char(9)+char(34)+"path"+char(34)+": " +char(34)+wd+char(34)+",")
+		}
+				
 		if(strlen(out_path)){
 			out_path = subinstr(out_path,"\","/")
 			if(substr(out_path,-1)!="/"){
