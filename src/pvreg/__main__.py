@@ -1,10 +1,11 @@
 '''
 pvreg
-ver 1.2.0
-2023.02.28
+ver 1.2.1
+2023.03.16
 everythingthatcounts@gmail.com
 '''
 
+from threadpoolctl import threadpool_limits
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
@@ -173,7 +174,7 @@ def load_data(in_estimates_df, in_responses_df,
         g_items = {}
         for item_name, item_data in responses_df.iloc[g.indx,
                                                       ~responses_df.columns.isin(
-                                                          [student_id, 'group', 'exam_var'])].iteritems():
+                                                          [student_id, 'group', 'exam_var'])].items():
             i_n = item_data.count()
             if i_n:
                 g_items[item_name] = i_n
@@ -439,7 +440,8 @@ def multilevel(data, theta_var, school_id, student_id, exam_var, fixed_effects=[
                                     re_formula='1 + ' + exam_var,
                                     vc_formula=vc,
                                     data=data)
-    results = model.fit()
+    with threadpool_limits(limits=1, user_api='blas'):
+        results = model.fit()
 
     return model, results
 

@@ -24,19 +24,20 @@ write_to = "src/pvreg/_version.py"
 
 [project]
 name = "pvreg"
-version = "1.2.0"
+version = "1.2.1"
 #dynamic = ["version"]
 description = "package to run 3-level latent regression model for educational value added"
 authors = [{ name = "Bartosz Kondratek" }, { email = "everythingthatcounts@gmail.com" }]
 maintainers = [{ name = "Bartosz Kondratek" }, { email = "everythingthatcounts@gmail.com" }]
 readme = "README.md"
 license = { file = "LICENSE.txt" }
-requires-python = ">=3.8"
+requires-python = "==3.10.10"
 dependencies = [
-    "numpy == 1.21.5",
-    "pandas == 1.4.3",
-    "statsmodels == 0.13.2",
-    "enlighten ==1.11.1"
+    "statsmodels == 0.13.5",
+    "numpy == 1.24.2",
+    "pandas == 1.5.3",
+    "enlighten == 1.11.2",
+    "threadpoolctl == 3.1.0"
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
