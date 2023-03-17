@@ -1,14 +1,14 @@
 '''
 pvreg
 ver 1.2.1
-2023.03.16
+2023.03.17
 everythingthatcounts@gmail.com
 '''
 
 from threadpoolctl import threadpool_limits
 import numpy as np
 import pandas as pd
-import multiprocessing as mp
+import multiprocess as mp
 import statsmodels.api as sm
 import enlighten
 import re
@@ -459,8 +459,14 @@ def rescale_priors(prior_mean, prior_sd, groups):
 
 def child_initialize(_items, _groups, _responses, _estimates, _burn0, _burn1,
                         _draw_delta,
-                        _keep_pv, _keep_reff, _mlv_data, _mlv_args):
+                        _keep_pv, _keep_reff, _mlv_data, _mlv_args,
+                        _threadpool_limits, _np, _pd, _sm, _enlighten, _copy,_re,
+                        _generate_pv_single, _noisify_estimates, _eap, _likelihood_wide,
+                        _make_quad, _item_prob, _draw_mcmc, _likelihood_long, _normal_den,
+                        _multilevel, _priors_from_multilevel_results, _rescale_priors,
+                        _reff_from_multilevel_results ):
     '''initializer for mp.Pool()'''
+
     global items, groups, responses, estimates, burn0, burn1, draw_delta, keep_pv, keep_reff, mlv_data, mlv_args
     items = _items
     groups = _groups
@@ -473,6 +479,34 @@ def child_initialize(_items, _groups, _responses, _estimates, _burn0, _burn1,
     keep_reff = _keep_reff
     mlv_data = _mlv_data
     mlv_args = _mlv_args
+
+    # all that is below, enables serialisation when installed as a module (not necessary when running as a script)
+    global threadpool_limits, np, pd, sm, enlighten, copy, re
+    threadpool_limits = _threadpool_limits
+    np = _np
+    pd = _pd
+    sm = _sm
+    enlighten = _enlighten
+    copy = _copy
+    re = _re
+
+    global generate_pv_single, noisify_estimates, eap, likelihood_wide, make_quad, item_prob, draw_mcmc, \
+            likelihood_long, normal_den, multilevel, priors_from_multilevel_results, rescale_priors, \
+            reff_from_multilevel_results
+    generate_pv_single = _generate_pv_single
+    noisify_estimates = _noisify_estimates
+    eap = _eap
+    likelihood_wide = _likelihood_wide
+    make_quad = _make_quad
+    item_prob = _item_prob
+    draw_mcmc = _draw_mcmc
+    likelihood_long = _likelihood_long
+    normal_den = _normal_den
+    multilevel = _multilevel
+    priors_from_multilevel_results = _priors_from_multilevel_results
+    rescale_priors = _rescale_priors
+    reff_from_multilevel_results = _reff_from_multilevel_results
+
 
 def generate_pv_child(n_draw, max_indep_chains, shift):
     '''2-argument version of generate_pv_single() for pool.apply()'''
@@ -502,7 +536,12 @@ def generate_pv_multipro(items, groups, responses, estimates, njobs=2,
 
     pool = mp.Pool(njobs, initializer = child_initialize,
                    initargs = (items, groups, responses, estimates, burn0, burn1,
-                               draw_delta, keep_pv, keep_reff, mlv_data, mlv_args)
+                               draw_delta, keep_pv, keep_reff, mlv_data, mlv_args,
+                               threadpool_limits, np, pd, sm, enlighten, copy, re,
+                               generate_pv_single, noisify_estimates, eap, likelihood_wide,
+                               make_quad, item_prob, draw_mcmc, likelihood_long, normal_den,
+                               multilevel, priors_from_multilevel_results, rescale_priors,
+                               reff_from_multilevel_results)
                    )
     pool_res =   [pool.apply_async(generate_pv_child, args=(n_draw, max_indep_chains, shift))
                     for n_draw, max_indep_chains, shift in pool_args]
