@@ -440,8 +440,7 @@ def multilevel(data, theta_var, school_id, student_id, exam_var, fixed_effects=[
                                     re_formula='1 + ' + exam_var,
                                     vc_formula=vc,
                                     data=data)
-    with threadpool_limits(limits=1, user_api='blas'):
-        results = model.fit()
+    results = model.fit()
 
     return model, results
 
@@ -612,9 +611,10 @@ def generate_pv_single(items, groups, responses, estimates,
             school_id, student_id, exam_var, fixed_effects = mlv_args
             for _ in range(burn1):
                 mlv_data['theta'] =theta_t
-                mlv_model, mlv_results = multilevel(mlv_data, 'theta', *mlv_args)
-                prior_mean, prior_sd = priors_from_multilevel_results(mlv_model, mlv_results, mlv_data,
-                                                                           school_id, student_id, exam_var)
+                with threadpool_limits(limits=1, user_api='blas'):
+                    mlv_model, mlv_results = multilevel(mlv_data, 'theta', *mlv_args)
+                    prior_mean, prior_sd = priors_from_multilevel_results(mlv_model, mlv_results, mlv_data,
+                                                                               school_id, student_id, exam_var)
                 prior_mean, prior_sd = rescale_priors(prior_mean, prior_sd,
                                                          _groups)  #TLD - make sure does its job
                 theta_t = draw_mcmc(_items, _groups, responses, theta_t, proposal_sd, prior_mean, prior_sd)
@@ -630,9 +630,10 @@ def generate_pv_single(items, groups, responses, estimates,
 
                 if len(mlv_args):
                     mlv_data['theta'] = theta_t
-                    mlv_model, mlv_results = multilevel(mlv_data, 'theta', *mlv_args)
-                    prior_mean, prior_sd = priors_from_multilevel_results(mlv_model, mlv_results, mlv_data,
-                                                                          school_id, student_id, exam_var)
+                    with threadpool_limits(limits=1, user_api='blas'):
+                        mlv_model, mlv_results = multilevel(mlv_data, 'theta', *mlv_args)
+                        prior_mean, prior_sd = priors_from_multilevel_results(mlv_model, mlv_results, mlv_data,
+                                                                              school_id, student_id, exam_var)
                     prior_mean, prior_sd = rescale_priors(prior_mean, prior_sd,
                                                           _groups)
 
