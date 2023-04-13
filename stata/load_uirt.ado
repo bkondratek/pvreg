@@ -1,6 +1,6 @@
 *load_uirt.ado
-*ver 1.0
-*2022.12.02
+*ver 1.1
+*2023.04.13
 *everythingthatcounts@gmail.com
 
 cap mata: mata drop load_uirt()
@@ -124,7 +124,12 @@ mata
 		st_matrixrowstripe("item_par",(items,models))
 		st_matrixcolstripe("item_par",(J(rows(par_labels),1,""),par_labels))
 		
-		eret_cmdstrip = "uirt dummy_fake_run,gr("+gr_var+")"
+		items_list=""
+		for(i=1;i<=rows(items);i++){
+			items_list=items_list + " " + items[i]
+		}
+		
+		eret_cmdstrip = "uirt "+items_list+",gr("+gr_var+")"
 		
 		stata("ereturn clear")
 		stata("ereturn post b V")
