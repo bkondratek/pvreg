@@ -100,7 +100,7 @@ mata:
 		}
 		for(i=1;i<=rows(e_c_items);i++){
 			cats = select(e_c[i,.]',e_c[i,.]':!=.)
-			ind = select( (1::rows(string_vars)) , (substr(string_vars[.,2],-2) :!= "_c" ) :* (string_vars[.,1] :== e_c_items[i] ) ) 
+			ind = select( (1::rows(string_vars)) , (string_vars[.,2] :!= "3plm_c" ) :* (string_vars[.,1] :== e_c_items[i] ) ) 
 			groupN_itemCATS[ind] = cats
 		}
 		
@@ -155,11 +155,9 @@ mata:
 			groupN_itemCATS = groupN_itemCATS[sel_g_long]
 		//}
 		
-				
-		
+					
 		ind = select( (1::rows(string_vars)) , ( strpos(string_vars[.,2],"_theta"):>0  )  ) 
 		string_vars[ind,1] = subinstr(string_vars[ind,1],"group",gr_var)
-
 		
 		stata("clear")
 		
