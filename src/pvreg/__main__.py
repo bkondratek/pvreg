@@ -121,6 +121,15 @@ def load_data(in_estimates_df, in_responses_df,
                 columns={group_var_out+"_" + str(old_val) + "_mean_theta": "group_" + str(new_val) + "_mean_theta",
                          group_var_out+"_" + str(old_val) + "_sd_theta": "group_" + str(new_val) + "_sd_theta"}, inplace=True)
             out_responses_df.loc[out_responses_df[group_var_out]==old_val, group_var_out] = new_val
+    else: # ugly patch - we have to unify group names always (below for in_estimates)
+        for g in g_values_out:
+            out_estimates_df.loc[
+                out_estimates_df.loc[:, 'var'] == group_var_out + "_" + str(g), 'var'] = "group_" + str(
+                g)
+            out_estimates_df.rename(
+                columns={group_var_out + "_" + str(g) + "_mean_theta": "group_" + str(g) + "_mean_theta",
+                         group_var_out + "_" + str(g) + "_sd_theta": "group_" + str(g) + "_sd_theta"},
+                inplace=True)
 
     #unifying group name for in_estimates_df (already done for out_estimates_df)
     for g in g_values_in:
@@ -325,17 +334,39 @@ def reff_from_multilevel_results(model,results,school_id, exam_var):
         reff_school_cov[key] = reff_c[key].loc[[school_id, exam_var], [school_id, exam_var]]
     return reff_school, reff_school_cov
 
-def priors_from_multilevel_results(model, results, data, school_id, student_id, exam_var):
+def priors_from_multilevel_results(model, _results, data, school_id, student_id, exam_var):
     ''' (1) Converts MixedLM estimates into a useful Pandas Dataframe
         (2) Adds prior_mean and its randomized version (a draw according to standard errors of effect estimates);
         (3) Adds prior_sd - sqrt of sum of error variances'''
 
+    results=copy.deepcopy(_results)
+    # randomize the estimates inside results object
+    _params = copy.deepcopy(results.params)
+    _params[:] = np.random.multivariate_normal(results.params,
+                                               results.cov_params())
+    _cov_re = copy.deepcopy(results.cov_re)
+    for v in results.cov_re.columns:
+        _cov_re.loc[v, v] = _params[v + " Var"] * results.scale
+    _cov_re.iloc[0, 1] = _params.loc[_params.index.str.contains(" Cov")][0] * results.scale
+    _cov_re.iloc[1, 0] = _cov_re.iloc[0, 1]
+
+    _vcomp = np.array([_params[-1] * results.scale])
+
+    _fe_params = _params[results.fe_params.index]
+
+    results.params = _params
+    results.cov_re = _cov_re
+    results.vcomp = _vcomp
+    results.fe_params = _fe_params
+
+    #precdition of random effects
     reff = results.random_effects
     reff_c = results.random_effects_cov
 
-    # random effect predictions
+
     n_reff = sum([len(reff[key]) - 2 for key in model.group_labels])
     df_reff = np.zeros((n_reff, 11))
+#    df_reff = np.zeros((n_reff, 8))
 
     r_0 = 0
     r_n = 0
@@ -400,19 +431,23 @@ def priors_from_multilevel_results(model, results, data, school_id, student_id, 
     xb_rand_uniq = np.random.normal(xb_uniq, np.sqrt(xb_ve_uniq))
 
     df_fixed = np.zeros((len(data), 3))
+ #   df_fixed = np.zeros((len(data), 2))
     for i, u in enumerate(x_uniq):
         indx = np.where((x == u).all(axis=1))
         df_fixed[indx, :] = [xb_uniq[i], xb_ve_uniq[i], xb_rand_uniq[i]]
+ #       df_fixed[indx, :] = [xb_uniq[i], xb_ve_uniq[i]]
 
     # merging with original data index
     df = data.loc[:, [school_id, student_id]]
     df[['xb', 'xb_se', 'xb_rand']] = df_fixed
+ #   df[['xb', 'xb_se']] = df_fixed
     df = df.merge(df_reff, how='left', on=[school_id, student_id])
 
     # exam_var==0 cases have 0 prediction on blup (error is dropped as well)
     zeros_index = list(data[exam_var] == 0)
     df.loc[zeros_index, [exam_var + '_reff', exam_var + '_reff_se', exam_var + '_reff_rand']] = np.zeros(
         (sum(zeros_index), 3))
+ #   df.loc[zeros_index, [exam_var + '_reff', exam_var + '_reff_se']] = np.zeros((sum(zeros_index), 2))
 
     # adding priors
     df['prior_mean'] = df[['xb', school_id + '_reff', exam_var + '_reff', student_id + '_reff']].sum(axis=1)
@@ -421,11 +456,12 @@ def priors_from_multilevel_results(model, results, data, school_id, student_id, 
     df['prior_sd'] = np.sqrt(
         df[['xb_se', school_id + '_reff_se', exam_var + '_reff_se', student_id + '_reff_se']]
         .sum(axis=1))
-    df[['xb_se', school_id + '_reff_se', exam_var + '_reff_se', student_id + '_reff_se']] = np.sqrt(df[[
-        'xb_se', school_id + '_reff_se', exam_var + '_reff_se', student_id + '_reff_se']])
+ #  df[['xb_se', school_id + '_reff_se', exam_var + '_reff_se', student_id + '_reff_se']] = np.sqrt(df[[
+ #      'xb_se', school_id + '_reff_se', exam_var + '_reff_se', student_id + '_reff_se']])
 
     #instead of the whole df I return only priors - rest is unused
     return df['prior_mean_rand'], df['prior_sd']
+ #   return df['prior_mean'], df['prior_sd']
 
 def multilevel(data, theta_var, school_id, student_id, exam_var, fixed_effects=[]):
     '''fits MixedLM according to 3-level school EVA model'''
@@ -613,6 +649,14 @@ def generate_pv_single(items, groups, responses, estimates,
                 mlv_data['theta'] =theta_t
                 with threadpool_limits(limits=1, user_api='blas'):
                     mlv_model, mlv_results = multilevel(mlv_data, 'theta', *mlv_args)
+        ## DEBUG RANDOM EFFECT ESTIMATES ALONG MCMC ITERATIONS
+        #            if shift ==0:
+        #                _r = mlv_results.cov_re.iloc[0, 1] / np.sqrt(mlv_results.cov_re.iloc[0, 0]
+        #                                                            * mlv_results.cov_re.iloc[1, 1])
+        #                print('{:.3f} {:.3f}  {:.3f} {:.3f}'.format(mlv_results.cov_re.iloc[0,0],
+        #                                                            mlv_results.cov_re.iloc[1,1],
+        #                                                            mlv_results.cov_re.iloc[0,1],
+        #                                                            _r))
                     prior_mean, prior_sd = priors_from_multilevel_results(mlv_model, mlv_results, mlv_data,
                                                                                school_id, student_id, exam_var)
                 prior_mean, prior_sd = rescale_priors(prior_mean, prior_sd,

@@ -1,6 +1,6 @@
 *load_uirt.ado
 *ver 1.1
-*2023.04.13
+*2023.04.28
 *everythingthatcounts@gmail.com
 
 cap mata: mata drop load_uirt()
@@ -130,6 +130,10 @@ mata
 		}
 		
 		eret_cmdstrip = "uirt "+items_list+",gr("+gr_var+")"
+		
+		if(sum(item_pars[.,1]:<0)){
+			eret_cmdstrip = eret_cmdstrip + " anegative"
+		}
 		
 		stata("ereturn clear")
 		stata("ereturn post b V")
