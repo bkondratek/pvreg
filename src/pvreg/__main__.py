@@ -1,7 +1,7 @@
 '''
 pvreg
-ver 1.2.1
-2023.03.17
+ver 1.2.2
+2023.11.22
 everythingthatcounts@gmail.com
 '''
 
@@ -108,11 +108,14 @@ def load_data(in_estimates_df, in_responses_df,
     group_var_out = re.search("[^\b]*(?=_\d*$)", g_pars_out.iloc[0, 0])[0]
     g_values_out = set(g_pars_out['var'].apply(lambda x: int(re.search("(\d*$)", x)[0])))
     common_g_values = g_values_in.intersection(g_values_out)
+
     if len(common_g_values):
         new_val = max(g_values_in.union(g_values_out)) + 1
-        g_out_recode = {}
+        g_out_recode = {i:i for i in g_values_out}
         for old_val in common_g_values:
             g_out_recode[old_val] = new_val
+            g_values_out.remove(old_val)
+            g_values_out.add(new_val)
             new_val += 1
         for old_val, new_val in g_out_recode.items():
             out_estimates_df.loc[out_estimates_df.loc[:, 'var'] == group_var_out+"_" + str(old_val), 'var'] = "group_" + str(
