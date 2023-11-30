@@ -1,7 +1,7 @@
 '''
 pvreg
-ver 1.2.2
-2023.11.22
+ver 1.3.0
+2023.11.30
 everythingthatcounts@gmail.com
 '''
 
@@ -484,6 +484,93 @@ def multilevel(data, theta_var, school_id, student_id, exam_var, fixed_effects=[
     return model, results
 
 
+def multilevel_st3_sch3(data, theta_var, school_id, student_id, exam_var, fixed_effects=[]):
+    '''fits MixedLM according to 2-level school EVA model, 3rd order regression on theta_in and mean_theta_in'''
+
+    # data transformation
+    _fixed_effects_all = [i for i in fixed_effects if
+                          i.find('_X_exam') < 0 or (i.replace('_X_exam', '') not in fixed_effects)]
+
+    _data = data.loc[data[exam_var] == 1, [school_id, student_id] + _fixed_effects_all + ['theta']]
+    _data.rename(columns={'theta': 'theta_out'}, inplace=True)
+
+    _data = pd.merge(_data, data.loc[data[exam_var] == 0, [student_id, 'theta']],
+                     left_on=student_id, right_on=student_id, how='inner', validate='1:1')
+    _data.rename(columns={'theta': 'theta_in'}, inplace=True)
+
+    _data['theta_in_2'] = _data['theta_in'] ** 2
+    _data['theta_in_3'] = _data['theta_in'] ** 3
+
+    _data['mean_theta_in'] = _data[school_id].map(
+        _data.groupby(school_id)['theta_in'].mean().to_dict()
+    )
+    _data['mean_theta_in_2'] = _data['mean_theta_in'] ** 2
+    _data['mean_theta_in_3'] = _data['mean_theta_in'] ** 3
+
+    # model
+    _fixed = '1'
+    for eff in _fixed_effects_all:
+        _fixed += ' + ' + eff
+    _fixed += ' + theta_in + theta_in_2 + theta_in_3'
+    _fixed += ' + mean_theta_in + mean_theta_in_2 + mean_theta_in_3'
+
+    _model = sm.MixedLM.from_formula('theta_out ~ ' + _fixed,
+                                     groups=school_id,
+                                     data=_data)
+    _results = _model.fit()
+
+    return _model, _results, _data
+
+def eva_from_multilevel_st3_sch3(model, _results, data, school_id):
+    ''' (1) Extracts school random effect from 2-level model and its variance (EVA)
+        (2) Computes school_mean_out and its variance as the average of predictions
+        (3) Estimates covariance between the two
+        (4) Estimates school means directly from PVs'''
+
+    results = copy.deepcopy(_results)
+
+    # raw school means from PV
+    schools_b = {}
+    schools_v = {}
+    schools_n = {}
+
+    # EVA
+    out_eva = results.random_effects  # EVA
+    out_eva_c = results.random_effects_cov  # V(EVA)
+
+    # adding predicted schl_mean_out , its sample variance (fe errors ignored) and covariance with EVA
+    b_names = results.fe_params.index.tolist()
+    b = np.array(results.fe_params)
+    for key in model.group_labels:
+        schl_slice = data.loc[data[school_id] == key, b_names[1:]]
+
+        x = np.concatenate((np.ones((len(schl_slice), 1)),
+                            schl_slice.to_numpy()), axis=1)  # adding intercept (always first)
+        xb = x.dot(b)
+
+        schl_fixed_pred = xb.mean()
+        schl_fixed_pred_v = xb.var() / (len(xb) - 1)  # np.var() has 'n' in denominator
+
+        eva = out_eva[key].values[0]
+        eva_v = out_eva_c[key].values[0][0]
+
+        schl_mean_out = schl_fixed_pred + eva
+        schl_mean_out_v = schl_fixed_pred_v + eva_v
+
+        out_eva[key] = pd.Series([schl_mean_out, eva], index=['schl_mean_out', 'eva'])
+        out_eva_c[key] = pd.DataFrame([[schl_mean_out_v, eva_v], [eva_v, eva_v]], columns=['schl_mean_out', 'eva'],
+                                      index=['schl_mean_out', 'eva'])
+
+        schl_slice = data.loc[data[school_id] == key, ['theta_in', 'theta_out']]
+        schools_b[key] = schl_slice.mean()
+        _n = len(schl_slice)
+        _v = schl_slice.var() / (_n - 1)
+        schools_n[key] = _n
+        schools_v[key] = pd.DataFrame([[_v[0], 0], [0, _v[1]]], columns=_v.index.tolist(), index=_v.index.tolist())
+
+    return out_eva, out_eva_c, schools_b, schools_v, schools_n
+
+
 def rescale_priors(prior_mean, prior_sd, groups):
     for g in groups.values():
         _mean = prior_mean[g.indx].mean()
@@ -502,7 +589,8 @@ def child_initialize(_items, _groups, _responses, _estimates, _burn0, _burn1,
                         _generate_pv_single, _noisify_estimates, _eap, _likelihood_wide,
                         _make_quad, _item_prob, _draw_mcmc, _likelihood_long, _normal_den,
                         _multilevel, _priors_from_multilevel_results, _rescale_priors,
-                        _reff_from_multilevel_results ):
+                        _reff_from_multilevel_results,
+                        _multilevel_st3_sch3, _eva_from_multilevel_st3_sch3):
     '''initializer for mp.Pool()'''
 
     global items, groups, responses, estimates, burn0, burn1, draw_delta, keep_pv, keep_reff, mlv_data, mlv_args
@@ -530,7 +618,8 @@ def child_initialize(_items, _groups, _responses, _estimates, _burn0, _burn1,
 
     global generate_pv_single, noisify_estimates, eap, likelihood_wide, make_quad, item_prob, draw_mcmc, \
             likelihood_long, normal_den, multilevel, priors_from_multilevel_results, rescale_priors, \
-            reff_from_multilevel_results
+            reff_from_multilevel_results, \
+            multilevel_st3_sch3, eva_from_multilevel_st3_sch3
     generate_pv_single = _generate_pv_single
     noisify_estimates = _noisify_estimates
     eap = _eap
@@ -544,6 +633,8 @@ def child_initialize(_items, _groups, _responses, _estimates, _burn0, _burn1,
     priors_from_multilevel_results = _priors_from_multilevel_results
     rescale_priors = _rescale_priors
     reff_from_multilevel_results = _reff_from_multilevel_results
+    multilevel_st3_sch3 = _multilevel_st3_sch3
+    eva_from_multilevel_st3_sch3 = _eva_from_multilevel_st3_sch3
 
 
 def generate_pv_child(n_draw, max_indep_chains, shift):
@@ -579,22 +670,29 @@ def generate_pv_multipro(items, groups, responses, estimates, njobs=2,
                                generate_pv_single, noisify_estimates, eap, likelihood_wide,
                                make_quad, item_prob, draw_mcmc, likelihood_long, normal_den,
                                multilevel, priors_from_multilevel_results, rescale_priors,
-                               reff_from_multilevel_results)
+                               reff_from_multilevel_results,
+                               multilevel_st3_sch3, eva_from_multilevel_st3_sch3)
                    )
     pool_res =   [pool.apply_async(generate_pv_child, args=(n_draw, max_indep_chains, shift))
                     for n_draw, max_indep_chains, shift in pool_args]
     pool_res = [x.get() for x in pool_res]
     pool.close()
 
-    pvs = {}
-    reffs_school = {}
-    reffs_school_cov = {}
+    generate_pv_resuls = {  'pvs': {},
+                            '3_lev': {'b':{},
+                                      'cov': {}},
+                            'st3_sch3': {'b': {},
+                                        'cov': {}},
+                            'means_pv': {'b': {},
+                                        'cov': {},
+                                        'n': {}}
+                          }
     for i in range(len(pool_res)):
-        pvs.update( pool_res[i][0] )
-        reffs_school.update( pool_res[i][1] )
-        reffs_school_cov.update( pool_res[i][2] )
+        for k in generate_pv_resuls.keys():
+            for kk in generate_pv_resuls[k].keys():
+                generate_pv_resuls[k][kk].update( pool_res[i][k][kk] )
 
-    return pvs, reffs_school, reffs_school_cov
+    return generate_pv_resuls
 
 
 def generate_pv_single(items, groups, responses, estimates,
@@ -602,11 +700,16 @@ def generate_pv_single(items, groups, responses, estimates,
                 keep_pv=True,
                 keep_reff=True, mlv_data=[], mlv_args=[],
                 shift=-1):
-    '''Generates MCMC chains for regression conditioned PVs '''
+    '''Generates MCMC chains for regression conditioned PVs'''
 
     pvs={}
     reffs_school = {}
     reffs_school_cov = {}
+    eva_school_st3_sch3 = {}
+    eva_school_cov_st3_sch3 = {}
+    means_school  = {}
+    means_school_cov  = {}
+    school_n  = {}
 
     if n_draw > max_indep_chains:
         max_chain = max_indep_chains
@@ -689,49 +792,84 @@ def generate_pv_single(items, groups, responses, estimates,
                 if keep_pv:
                     pvs[col] = theta_t
 
-                if keep_reff:
-                    reffs_school[col], reffs_school_cov[col] = reff_from_multilevel_results(mlv_model, mlv_results,school_id, exam_var)
+                with threadpool_limits(limits=1, user_api='blas'):
+                    reffs_school[col], reffs_school_cov[col] \
+                        = reff_from_multilevel_results(mlv_model, mlv_results, school_id, exam_var)
+                    mlv_model_st3_sch3, mlv_results_st3_sch3, mlv_data_st3_sch3 \
+                        = multilevel_st3_sch3(mlv_data, 'theta', *mlv_args)
+                    eva_school_st3_sch3[col], eva_school_cov_st3_sch3[col], \
+                    means_school[col], means_school_cov[col], school_n[col] \
+                        = eva_from_multilevel_st3_sch3(mlv_model_st3_sch3, mlv_results_st3_sch3,
+                                                       mlv_data_st3_sch3, school_id)
             if shift == 0:
                 progress_bar.update()
 
-    return pvs, reffs_school, reffs_school_cov
+    return {'pvs': pvs,
+            '3_lev': {'b': reffs_school,
+                      'cov': reffs_school_cov},
+            'st3_sch3': {'b': eva_school_st3_sch3,
+                         'cov': eva_school_cov_st3_sch3},
+            'means_pv': {'b': means_school,
+                         'cov': means_school_cov,
+                         'n': school_n}
+            }
 
 
 def pvs_to_reff_df(pv_results, school_id):
     '''Transforms pv_results into a dataframe with pvs and a dataframe with school effect estimates'''
-    pvs = pv_results[0]
-    reffs_school = pv_results[1]
-    reffs_school_cov = pv_results[2]
-    m = len(reffs_school)
-    reff_df = []
-    for schl in reffs_school[0].keys():
-        b = np.array([reffs_school[pv][schl] for pv in range(m)])
-        b_est = np.mean(b, axis=0)
-        W = np.zeros(shape=(len(b_est), len(b_est)))
-        B = np.zeros_like(W)
-        for pv in range(m):
-            W += reffs_school_cov[pv][schl]
-            B += np.outer(b[pv] - b_est, b[pv] - b_est)
-        W /= m
-        B /= m - 1
-        V = W + ((1 + m) / m) * B
-        b_est_se = np.sqrt(np.diag(V))
-        reff_df.append([schl,
-                        b_est[0],
-                        b_est_se[0],
-                        b_est[1],
-                        b_est_se[1],
-                        V.values.tolist(),
-                        W.values.tolist(),
-                        B.tolist(),
-                        m
-                        ])
-    reff_df = pd.DataFrame(reff_df,
-                          columns=[school_id, 'mean_schl', 'mean_schl_se', 'eva_schl', 'eva_schl_se', 'COV', 'W', 'B',
-                                    'm'])
-    pvs=pd.DataFrame(pvs)
 
-    return reff_df, pvs
+    colnames = {'3_lev': [school_id, '3_lev_schl', '3_lev_schl_se',
+                          '3_lev_schl_exam', '3_lev_schl_exam_se', '3_lev_R', '3_lev_COV', 'W', 'B', 'm'],
+               'st3_sch3': [school_id, 'st3_sch3_mean_schl_out', 'st3_sch3_mean_schl_out_se',
+                            'st3_sch3_eva_schl', 'st3_sch3_eva_schl_se','st3_sch3_R', 'st3_sch3_COV', 'W', 'B', 'm'],
+                'means_pv': [school_id, 'pv_mean_schl_in', 'pv_mean_schl_in_se',
+                            'pv_mean_schl_out', 'pv_mean_schl_out_se', 'pv_R','pv_COV', 'W', 'B', 'm'],
+               }
+
+    reff_dfs={}
+    for reff_key in colnames.keys():
+        reffs_school = pv_results[reff_key]['b']
+        reffs_school_cov = pv_results[reff_key]['cov']
+        m = len(reffs_school)
+        reff_df = []
+        for schl in reffs_school[0].keys():
+            b = np.array([reffs_school[pv][schl] for pv in range(m)])
+            b_est = np.mean(b, axis=0)
+            W = np.zeros(shape=(len(b_est), len(b_est)))
+            B = np.zeros_like(W)
+            for pv in range(m):
+                W += reffs_school_cov[pv][schl]
+                B += np.outer(b[pv] - b_est, b[pv] - b_est)
+            W /= m
+            B /= m - 1
+            V = W + ((1 + m) / m) * B
+            b_est_se = np.sqrt(np.diag(V))
+            reff_df.append([schl,
+                            b_est[0],
+                            b_est_se[0],
+                            b_est[1],
+                            b_est_se[1],
+                            V.iloc[0, 1] / np.sqrt(V.iloc[0, 0] * V.iloc[1, 1]),
+                            V.values.tolist(),
+                            W.values.tolist(),
+                            B.tolist(),
+                            m
+                            ])
+        reff_df = pd.DataFrame(reff_df,
+                               columns=colnames[reff_key])
+        reff_dfs[reff_key] = reff_df
+
+    _reff_df = reff_dfs['st3_sch3'].loc[:, colnames['st3_sch3'][:7]]
+    _reff_df = pd.merge(_reff_df, reff_dfs['3_lev'].loc[:, colnames['3_lev'][:7]],
+                        left_on=school_id, right_on=school_id, how='inner')
+    _reff_df = pd.merge(_reff_df, reff_dfs['means_pv'].loc[:, colnames['means_pv'][:5]],
+                        left_on=school_id, right_on=school_id, how='inner')
+    _reff_df['N'] = _reff_df[school_id].map(pv_results['means_pv']['n'][0])
+
+    pvs = pv_results['pvs']
+    pvs = pd.DataFrame(pvs)
+
+    return _reff_df, pvs
 
 def pvreg(estimates_in, responses_in, # dataframes with uirt estimates and item responses - exam 0
           estimates_out, responses_out, # dataframes with uirt estimates and item responses - exam 1
@@ -766,8 +904,7 @@ def pvreg(estimates_in, responses_in, # dataframes with uirt estimates and item 
     reffs, pvs = pvs_to_reff_df(pv_results, school_id)
 
     reffs.to_csv(csvname+'reffs.csv', index=False,
-                 columns=[school_id, 'mean_schl', 'mean_schl_se', 'eva_schl', 'eva_schl_se'
-                     ,'COV', 'W', 'B', 'm'])
+                 columns=reffs.columns) # change this if you only want some specific columns saved
     if keep_pv:
         pvs.columns = ['pv_'+str(i) for i in pvs.columns]
         pv_cols=[student_id, school_id, 'exam_var'] + pvs.columns.to_list()
