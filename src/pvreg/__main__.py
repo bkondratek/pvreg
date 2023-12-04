@@ -1,7 +1,7 @@
 '''
 pvreg
-ver 1.3.0
-2023.11.30
+ver 1.3.1
+2023.12.04
 everythingthatcounts@gmail.com
 '''
 
@@ -549,7 +549,10 @@ def eva_from_multilevel_st3_sch3(model, _results, data, school_id):
         xb = x.dot(b)
 
         schl_fixed_pred = xb.mean()
-        schl_fixed_pred_v = xb.var() / (len(xb) - 1)  # np.var() has 'n' in denominator
+        if len(xb) - 1:
+            schl_fixed_pred_v = xb.var() / (len(xb) - 1)  # np.var() has 'n' in denominator
+        else:
+            schl_fixed_pred_v = np.nan
 
         eva = out_eva[key].values[0]
         eva_v = out_eva_c[key].values[0][0]
@@ -564,7 +567,10 @@ def eva_from_multilevel_st3_sch3(model, _results, data, school_id):
         schl_slice = data.loc[data[school_id] == key, ['theta_in', 'theta_out']]
         schools_b[key] = schl_slice.mean()
         _n = len(schl_slice)
-        _v = schl_slice.var() / (_n - 1)
+        if _n - 1:
+            _v = schl_slice.var() / (_n - 1)
+        else:
+            _v = pd.Series({'theta_in': np.nan, 'theta_out': np.nan})
         schools_n[key] = _n
         schools_v[key] = pd.DataFrame([[_v[0], 0], [0, _v[1]]], columns=_v.index.tolist(), index=_v.index.tolist())
 
