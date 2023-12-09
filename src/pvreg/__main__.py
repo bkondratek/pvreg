@@ -1,7 +1,7 @@
 '''
 pvreg
-ver 1.3.1
-2023.12.04
+ver 1.3.2
+2023.12.09
 everythingthatcounts@gmail.com
 '''
 
@@ -695,8 +695,11 @@ def generate_pv_multipro(items, groups, responses, estimates, njobs=2,
                           }
     for i in range(len(pool_res)):
         for k in generate_pv_resuls.keys():
-            for kk in generate_pv_resuls[k].keys():
-                generate_pv_resuls[k][kk].update( pool_res[i][k][kk] )
+            if k == 'pvs':
+                generate_pv_resuls[k].update( pool_res[i][k] )
+            else:
+                for kk in generate_pv_resuls[k].keys():
+                    generate_pv_resuls[k][kk].update( pool_res[i][k][kk] )
 
     return generate_pv_resuls
 
